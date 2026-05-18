@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
-import { Circle, GeoJSON, MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
+import type { FeatureCollection, Geometry } from 'geojson';
+import { Circle, GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { Card } from '../components/Card';
 import { usePrediction } from '../hooks/usePrediction';
 
 type WaterFeature = {
   type: 'Feature';
-  geometry: GeoJSON.Geometry;
+  geometry: Geometry;
   properties: {
     id: number;
     name: string;
@@ -32,23 +33,23 @@ export function Maps() {
   const { location, profile } = usePrediction();
   const position: [number, number] = [location.latitude, location.longitude];
   const [waters, setWaters] = useState<WaterCollection>({ type: 'FeatureCollection', features: [] });
-  const [mapStatus, setMapStatus] = useState('Move or zoom the map to load visible water bodies.');
+  const [mapStatus, setMapStatus] = useState('Loading water bodies in the current map view...');
   const [bounds, setBounds] = useState<BoundsBox | null>(null);
 
   useEffect(() => {
     if (!bounds) return;
     let cancelled = false;
-    setMapStatus('Loading all visible water bodies...');
+    setMapStatus('Loading water bodies in this view...');
     fetchVisibleWater(bounds)
       .then(collection => {
         if (cancelled) return;
         setWaters(collection);
-        setMapStatus(collection.features.length ? `Highlighted ${collection.features.length} visible water bodies.` : 'No mapped water bodies found in this view.');
+        setMapStatus(collection.features.length ? `Highlighted ${collection.features.length} water bodies in view.` : 'No mapped water bodies found in this view.');
       })
       .catch(() => {
         if (cancelled) return;
         setWaters({ type: 'FeatureCollection', features: [] });
-        setMapStatus('Water overlay unavailable or this map view is too large. Zoom in and try again.');
+        setMapStatus('Water overlay unavailable or the view is too large. Zoom in a little and pan again.');
       });
     return () => { cancelled = true; };
   }, [bounds?.south, bounds?.west, bounds?.north, bounds?.east]);
@@ -80,8 +81,8 @@ export function Maps() {
           />
 
           {waters.features.length > 0 && <GeoJSON
-            key={`${location.id}-${waters.features.length}-${bounds?.south}-${bounds?.west}`}
-            data={waters as GeoJSON.FeatureCollection}
+            key={`${waters.features.length}-${bounds?.south}-${bounds?.west}-${bounds?.north}-${bounds?.east}`}
+            data={waters as FeatureCollection}
             style={() => ({
               color: '#75f6c8',
               fillColor: '#22d3ee',
@@ -141,19 +142,24 @@ export function Maps() {
         <span>{profile.clarity}</span>
         <span>{profile.current}</span>
       </div>
-      <p className="muted">The overlay now loads water bodies for the current map view. Pan or zoom and the app reloads lakes, ponds, reservoirs, and rivers inside the visible bounds.</p>
+      <p className="muted">The overlay loads water bodies inside the current map view. Pan or zoom and the app reloads lakes, ponds, reservoirs, and rivers that are visible on screen.</p>
     </Card>
   </main>;
 }
 
 function BoundsWatcher({ onBoundsChange }: { onBoundsChange: (bounds: BoundsBox) => void }) {
-  const map = useMapEvents({
-    moveend: () => onBoundsChange(boundsFromMap(map)),
-    zoomend: () => onBoundsChange(boundsFromMap(map))
+  const map = useMap();
+  useMapEvents({
+    moveend: event => onBoundsChange(boundsFromMap(event.target)),
+    zoomend: event => onBoundsChange(boundsFromMap(event.target))
   });
 
   useEffect(() => {
-    onBoundsChange(boundsFromMap(map));
+    const timer = window.setTimeout(() => {
+      map.invalidateSize();
+      onBoundsChange(boundsFromMap(map));
+    }, 150);
+    return () => window.clearTimeout(timer);
   }, [map, onBoundsChange]);
 
   return null;
