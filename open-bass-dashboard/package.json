@@ -1,0 +1,33 @@
+{
+  "name": "open-bass-dashboard",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Mobile-first AI-powered bass fishing intelligence PWA.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "lint": "eslint src --ext ts,tsx"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest",
+    "zustand": "latest",
+    "date-fns": "latest",
+    "idb-keyval": "latest",
+    "leaflet": "latest",
+    "react-leaflet": "latest"
+  },
+  "devDependencies": {
+    "eslint": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/leaflet": "latest"
+  }
+}

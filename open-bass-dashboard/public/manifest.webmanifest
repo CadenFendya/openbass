@@ -1,0 +1,11 @@
+{
+  "name": "Open Bass Dashboard",
+  "short_name": "BassDash",
+  "description": "AI-powered bass fishing intelligence for mobile anglers.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#071018",
+  "theme_color": "#071018",
+  "orientation": "portrait-primary",
+  "icons": []
+}
