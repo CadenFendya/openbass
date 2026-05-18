@@ -1,9 +1,10 @@
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import { Card } from '../components/Card';
 import { usePrediction } from '../hooks/usePrediction';
 
 export function Maps() {
   const { location, profile } = usePrediction();
+  const position: [number, number] = [location.latitude, location.longitude];
 
   return <main className="screen stack">
     <div className="desktop-header">
@@ -18,7 +19,7 @@ export function Maps() {
       <div className="themed-map-shell">
         <MapContainer
           key={location.id}
-          center={[location.latitude, location.longitude]}
+          center={position}
           zoom={14}
           scrollWheelZoom
           className="themed-map"
@@ -27,13 +28,12 @@ export function Maps() {
             attribution='&copy; OpenStreetMap contributors &copy; CARTO'
             url='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
           />
-          <TileLayer
-            attribution='Water labels from OpenStreetMap'
-            url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-            opacity={0.18}
-            className="water-highlight-layer"
+          <Circle
+            center={position}
+            radius={650}
+            pathOptions={{ color: '#75f6c8', fillColor: '#5ccaff', fillOpacity: 0.12, weight: 2 }}
           />
-          <Marker position={[location.latitude, location.longitude]}>
+          <Marker position={position}>
             <Popup>
               <strong>{location.name}</strong>
               <br />
@@ -43,7 +43,6 @@ export function Maps() {
             </Popup>
           </Marker>
         </MapContainer>
-        <div className="map-glow-overlay" />
       </div>
     </Card>
 
@@ -57,7 +56,7 @@ export function Maps() {
         <span>{profile.clarity}</span>
         <span>{profile.current}</span>
       </div>
-      <p className="muted">Dark map tiles keep the dashboard theme. The subtle OSM overlay helps waterbody names, roads, lakes, rivers, and landmarks stay readable.</p>
+      <p className="muted">The dark map uses OpenStreetMap/CARTO labels. The cyan radius highlights the active fishing area around your selected spot.</p>
     </Card>
   </main>;
 }
