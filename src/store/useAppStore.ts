@@ -41,6 +41,8 @@ interface AppState {
   addLog: (log: CatchLog) => void;
   updateWaterbody: (profile: WaterbodyProfile) => void;
   addLocation: (location: LocationProfile, profile: WaterbodyProfile) => void;
+  addGear: (setup: GearSetup) => void;
+  removeGear: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((storeSet, getState) => ({
@@ -58,6 +60,14 @@ export const useAppStore = create<AppState>((storeSet, getState) => ({
   updateWaterbody: profile => { storeSet({ waterbodies: { ...getState().waterbodies, [profile.locationId]: profile } }); persist(getState()); },
   addLocation: (location, profile) => {
     storeSet({ locations: [...getState().locations, location], waterbodies: { ...getState().waterbodies, [location.id]: profile }, activeLocationId: location.id });
+    persist(getState());
+  },
+  addGear: setup => {
+    storeSet({ gear: [setup, ...getState().gear] });
+    persist(getState());
+  },
+  removeGear: id => {
+    storeSet({ gear: getState().gear.filter(setup => setup.id !== id) });
     persist(getState());
   }
 }));
