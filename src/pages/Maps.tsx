@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
-import { Circle, GeoJSON, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import { Circle, GeoJSON, MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import { Card } from '../components/Card';
 import { usePrediction } from '../hooks/usePrediction';
 
@@ -21,30 +21,39 @@ type WaterCollection = {
   features: WaterFeature[];
 };
 
+type BoundsBox = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
 export function Maps() {
   const { location, profile } = usePrediction();
   const position: [number, number] = [location.latitude, location.longitude];
   const [waters, setWaters] = useState<WaterCollection>({ type: 'FeatureCollection', features: [] });
-  const [mapStatus, setMapStatus] = useState('Finding nearby water bodies...');
+  const [mapStatus, setMapStatus] = useState('Move or zoom the map to load visible water bodies.');
+  const [bounds, setBounds] = useState<BoundsBox | null>(null);
 
   useEffect(() => {
+    if (!bounds) return;
     let cancelled = false;
-    setMapStatus('Finding nearby water bodies...');
-    fetchNearbyWater(location.latitude, location.longitude)
+    setMapStatus('Loading all visible water bodies...');
+    fetchVisibleWater(bounds)
       .then(collection => {
         if (cancelled) return;
         setWaters(collection);
-        setMapStatus(collection.features.length ? `Highlighted ${collection.features.length} nearby water bodies.` : 'No named water bodies found nearby.');
+        setMapStatus(collection.features.length ? `Highlighted ${collection.features.length} visible water bodies.` : 'No mapped water bodies found in this view.');
       })
       .catch(() => {
         if (cancelled) return;
         setWaters({ type: 'FeatureCollection', features: [] });
-        setMapStatus('Water overlay unavailable right now. Base map still works.');
+        setMapStatus('Water overlay unavailable or this map view is too large. Zoom in and try again.');
       });
     return () => { cancelled = true; };
-  }, [location.id, location.latitude, location.longitude]);
+  }, [bounds?.south, bounds?.west, bounds?.north, bounds?.east]);
 
-  const waterLabels = useMemo(() => waters.features.filter(feature => feature.properties.name).slice(0, 12), [waters]);
+  const waterLabels = useMemo(() => waters.features.filter(feature => feature.properties.name).slice(0, 30), [waters]);
 
   return <main className="screen stack">
     <div className="desktop-header">
@@ -64,13 +73,14 @@ export function Maps() {
           scrollWheelZoom
           className="themed-map"
         >
+          <BoundsWatcher onBoundsChange={setBounds} />
           <TileLayer
             attribution='&copy; OpenStreetMap contributors &copy; CARTO'
             url='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
           />
 
           {waters.features.length > 0 && <GeoJSON
-            key={`${location.id}-${waters.features.length}`}
+            key={`${location.id}-${waters.features.length}-${bounds?.south}-${bounds?.west}`}
             data={waters as GeoJSON.FeatureCollection}
             style={() => ({
               color: '#75f6c8',
@@ -111,10 +121,10 @@ export function Maps() {
     </Card>
 
     <Card>
-      <h2>Nearby water analysis</h2>
+      <h2>Visible water analysis</h2>
       <p className="muted">{mapStatus}</p>
       {waters.features.length > 0 && <div className="water-list">
-        {waters.features.slice(0, 6).map(feature => <div className="water-row" key={feature.properties.id}>
+        {waters.features.slice(0, 10).map(feature => <div className="water-row" key={feature.properties.id}>
           <strong>{feature.properties.name || 'Unnamed water'}</strong>
           <span>{feature.properties.fishingType}</span>
         </div>)}
@@ -131,22 +141,50 @@ export function Maps() {
         <span>{profile.clarity}</span>
         <span>{profile.current}</span>
       </div>
-      <p className="muted">Water polygons are pulled from OpenStreetMap through Overpass. Named lakes, ponds, reservoirs, and rivers are highlighted with the dashboard accent color.</p>
+      <p className="muted">The overlay now loads water bodies for the current map view. Pan or zoom and the app reloads lakes, ponds, reservoirs, and rivers inside the visible bounds.</p>
     </Card>
   </main>;
 }
 
-async function fetchNearbyWater(latitude: number, longitude: number): Promise<WaterCollection> {
-  const radiusMeters = 3500;
+function BoundsWatcher({ onBoundsChange }: { onBoundsChange: (bounds: BoundsBox) => void }) {
+  const map = useMapEvents({
+    moveend: () => onBoundsChange(boundsFromMap(map)),
+    zoomend: () => onBoundsChange(boundsFromMap(map))
+  });
+
+  useEffect(() => {
+    onBoundsChange(boundsFromMap(map));
+  }, [map, onBoundsChange]);
+
+  return null;
+}
+
+function boundsFromMap(map: L.Map): BoundsBox {
+  const bounds = map.getBounds();
+  return {
+    south: roundCoord(bounds.getSouth()),
+    west: roundCoord(bounds.getWest()),
+    north: roundCoord(bounds.getNorth()),
+    east: roundCoord(bounds.getEast())
+  };
+}
+
+async function fetchVisibleWater(bounds: BoundsBox): Promise<WaterCollection> {
+  const span = Math.abs(bounds.north - bounds.south) + Math.abs(bounds.east - bounds.west);
+  if (span > 0.35) throw new Error('Map view is too large for live Overpass overlay');
+
+  const bbox = `${bounds.south},${bounds.west},${bounds.north},${bounds.east}`;
   const query = `
     [out:json][timeout:18];
     (
-      way(around:${radiusMeters},${latitude},${longitude})["natural"="water"];
-      relation(around:${radiusMeters},${latitude},${longitude})["natural"="water"];
-      way(around:${radiusMeters},${latitude},${longitude})["waterway"="riverbank"];
-      relation(around:${radiusMeters},${latitude},${longitude})["waterway"="riverbank"];
+      way["natural"="water"](${bbox});
+      relation["natural"="water"](${bbox});
+      way["water"~"lake|pond|reservoir|basin"](${bbox});
+      relation["water"~"lake|pond|reservoir|basin"](${bbox});
+      way["waterway"="riverbank"](${bbox});
+      relation["waterway"="riverbank"](${bbox});
     );
-    out tags center geom 25;
+    out tags center geom 35;
   `;
 
   const response = await fetch('https://overpass-api.de/api/interpreter', {
@@ -160,7 +198,7 @@ async function fetchNearbyWater(latitude: number, longitude: number): Promise<Wa
   const features = (data.elements ?? [])
     .map(overpassElementToFeature)
     .filter(Boolean)
-    .slice(0, 18) as WaterFeature[];
+    .slice(0, 75) as WaterFeature[];
 
   return { type: 'FeatureCollection', features };
 }
@@ -204,4 +242,8 @@ function classifyWater(kind: string, name: string) {
   if (value.includes('pond')) return 'pond target';
   if (value.includes('lake')) return 'lake target';
   return 'fishable water';
+}
+
+function roundCoord(value: number) {
+  return Math.round(value * 10000) / 10000;
 }
